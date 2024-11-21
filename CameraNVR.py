@@ -1,3 +1,5 @@
+# 新增移动云盘选项
+# 引用模块
 from bypy import ByPy     # 百度网盘第三方API  开源地址：https://github.com/houtianze/bypy
 from aligo import Aligo   # 阿里云盘盘第三方API  开源地址：https://github.com/foyoux/aligo
 import os
