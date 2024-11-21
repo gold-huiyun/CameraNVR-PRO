@@ -1,14 +1,13 @@
-# 引用模块
-from bypy import ByPy     #百度网盘第三方API  开源地址：https://github.com/houtianze/bypy
-from aligo import Aligo   #阿里云盘盘第三方API  开源地址：https://github.com/foyoux/aligo
+from bypy import ByPy     # 百度网盘第三方API  开源地址：https://github.com/houtianze/bypy
+from aligo import Aligo   # 阿里云盘盘第三方API  开源地址：https://github.com/foyoux/aligo
 import os
 import cv2
 import time
 import threading
+import requests
 
 # 配置
-
-Networkdisk = [1]  # 选择网盘 ([1] 表示百度网盘；[2] 表示阿里云网盘；[1, 2]同时选择两个网盘，)
+Networkdisk = [1, 3]  # 选择网盘 ([1] 表示百度网盘；[2] 表示阿里云网盘；[3] 表示中国移动云盘；[1, 2, 3]同时选择多个网盘)
 Cameraname = 'videos'  # 摄像头名称
 videopath = '/Camera/'  # 本地文件路径
 NVRurl = '根据摄像头填写'  # 视频流URL 
@@ -69,6 +68,30 @@ def alisync(file, path, i, deletevd):
         print(file + " 重试次数: " + str(i))
         alisync(file, path, i, deletevd)
 
+def cmccsync(file, path, i, deletevd):
+    if i >= 3:
+        print(file + " 上传错误，请检查网络、网盘账户和路径。")
+        return
+    time.sleep(10)
+    print(file + " 正在上传到中国移动云盘......")
+    
+    api_key = 'your_api_key' # 替换为你的API密钥
+    upload_url = 'https://api.yun.139.com/upload' # 替换为实际的上传URL
+    
+    with open(file, 'rb') as f:
+        files = {'file': f}
+        headers = {'Authorization': f'Bearer {api_key}'}
+        response = requests.post(upload_url, files=files, headers=headers)
+        
+        if response.status_code == 200:
+            if deletevd:
+                os.remove(file)
+            print(f"Upload successful: {file}")
+        else:
+            print(f"Upload failed: {file}", response.status_code, response.text)
+            i += 1
+            cmccsync(file, path, i, deletevd)
+
 def capture(NVRurl, Cameraname, videopath, videotime, Updisk, deletevd, Networkdisk, Networkdisk_space_threshold, upload_threshold):
     try:
         print("****")
@@ -98,35 +121,10 @@ def capture(NVRurl, Cameraname, videopath, videotime, Updisk, deletevd, Networkd
     # 初始化视频上传总大小变量
     video_total_size = 0
 
-    def alisync(file, path, i, deletevd):
-        if i >= 3:
-            print(file + " 上传错误，请检查网络、网盘账户和路径。")
-            return
-        time.sleep(10)
-        print(file + " 正在上传到阿里云网盘......")
-        ali = Aligo()
-        code = ''
-        global floder_id
-        try:
-            code = ali.upload_files(file_paths=[file], parent_file_id=floder_id, overwrite=True)  # 使用覆盖上传方式
-        except Exception as e:
-            print(e)
-            i += 1
-            print(file + " 重试次数: " + str(i))
-            alisync(file, path, i, deletevd)
-        if code != '':
-            if deletevd:
-                os.remove(file)
-            print(file + " 上传成功！")
-        else:
-            i += 1
-            print(file + " 重试次数: " + str(i))
-            alisync(file, path, i, deletevd)
-
     # 检测网盘空间并删除早期上传的视频文件
     def check_and_delete_earlier_videos():
         nonlocal video_total_size
-        if Updisk and 1 in Networkdisk and video_total_size > 0:  # 确保文件非空才进行上传判断
+        if Updisk and (1 in Networkdisk or 3 in Networkdisk) and video_total_size > 0:  # 确保文件非空才进行上传判断
             uploaded_size = get_uploaded_size() / (1024 * 1024 * 1024)  # 转换为GB单位
             if uploaded_size > Networkdisk_space_threshold:
                 print("上传视频总大小达到 {}GB，开始检查网盘剩余空间...".format(uploaded_size))
@@ -194,6 +192,8 @@ def capture(NVRurl, Cameraname, videopath, videotime, Updisk, deletevd, Networkd
                                 sync = threading.Thread(target=bysync, args=(cu_videopath, Cameraname, 0, deletevd))
                             elif disk == 2:
                                 sync = threading.Thread(target=alisync, args=(cu_videopath, Cameraname, 0, deletevd))
+                            elif disk == 3:
+                                sync = threading.Thread(target=cmccsync, args=(cu_videopath, Cameraname, 0, deletevd))
                             sync.start()
                     video_total_size += os.path.getsize(cu_videopath)  # 更新视频总大小
                     out.release()
